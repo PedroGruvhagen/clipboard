@@ -18,8 +18,17 @@ final class HistoryStore: ObservableObject {
         UserDefaults.standard.integer(forKey: "maxHistoryItems").nonZeroOr(1000)
     }
 
+    /// Retention period in days. 0 = keep forever.
+    private var retentionDays: Int {
+        UserDefaults.standard.integer(forKey: "retentionDays") // 0 = forever (default)
+    }
+
+    private var retentionTimer: Timer?
+
     private init() {
         loadEntries()
+        purgeExpiredEntries()
+        startRetentionTimer()
     }
 
     // MARK: - CRUD Operations
@@ -150,6 +159,28 @@ final class HistoryStore: ObservableObject {
         }
     }
 
+    /// Clears ALL entries including favorites
+    func clearAllHistory() {
+        entries.removeAll()
+
+        let context = persistence.newBackgroundContext()
+        context.perform { [weak self] in
+            guard let self = self else { return }
+
+            let request = NSFetchRequest<ClipboardEntryMO>(entityName: "ClipboardEntryMO")
+
+            do {
+                let results = try context.fetch(request)
+                for object in results {
+                    context.delete(object)
+                }
+                self.persistence.save(context: context)
+            } catch {
+                print("Failed to clear all history: \(error)")
+            }
+        }
+    }
+
     // MARK: - Clipboard Operations
 
     /// Copies an entry to the clipboard
@@ -212,6 +243,51 @@ final class HistoryStore: ObservableObject {
             }
         } catch {
             print("Failed to import history: \(error)")
+        }
+    }
+
+    // MARK: - Retention
+
+    /// Removes non-favorite entries older than the configured retention period
+    func purgeExpiredEntries() {
+        let days = retentionDays
+        guard days > 0 else { return } // 0 = keep forever
+
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+
+        // Remove expired non-favorites from in-memory cache
+        let expired = entries.filter { !$0.isFavorite && $0.timestamp < cutoffDate }
+        guard !expired.isEmpty else { return }
+
+        entries.removeAll { !$0.isFavorite && $0.timestamp < cutoffDate }
+
+        // Delete from Core Data
+        let context = persistence.newBackgroundContext()
+        let cutoff = cutoffDate as NSDate
+        context.perform { [weak self] in
+            guard let self = self else { return }
+
+            let request = NSFetchRequest<ClipboardEntryMO>(entityName: "ClipboardEntryMO")
+            request.predicate = NSPredicate(format: "isFavorite == NO AND timestamp < %@", cutoff)
+
+            do {
+                let results = try context.fetch(request)
+                for object in results {
+                    context.delete(object)
+                }
+                self.persistence.save(context: context)
+            } catch {
+                print("Failed to purge expired entries: \(error)")
+            }
+        }
+    }
+
+    /// Starts a periodic timer to check for expired entries (every hour)
+    private func startRetentionTimer() {
+        retentionTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.purgeExpiredEntries()
+            }
         }
     }
 

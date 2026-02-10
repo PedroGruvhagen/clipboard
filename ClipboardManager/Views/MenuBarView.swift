@@ -6,14 +6,21 @@ struct MenuBarView: View {
     @State private var searchText = ""
     @State private var showingPreferences = false
     @State private var showingHelp = false
+    @State private var showingClearConfirmation = false
+
+    private func openSettings() {
+        NotificationCenter.default.post(name: .openSettings, object: nil)
+    }
 
     var filteredEntries: [ClipboardEntry] {
-        if searchText.isEmpty {
-            return historyStore.entries
-        }
-        return historyStore.entries.filter { entry in
-            entry.plainText.localizedCaseInsensitiveContains(searchText)
-        }
+        let base = searchText.isEmpty
+            ? historyStore.entries
+            : historyStore.entries.filter { $0.plainText.localizedCaseInsensitiveContains(searchText) }
+
+        // Pin favorites to the top, then non-favorites, each sorted by timestamp
+        let favorites = base.filter { $0.isFavorite }.sorted { $0.timestamp > $1.timestamp }
+        let others = base.filter { !$0.isFavorite }.sorted { $0.timestamp > $1.timestamp }
+        return favorites + others
     }
 
     var body: some View {
@@ -48,12 +55,28 @@ struct MenuBarView: View {
             Text("Clipboard History")
                 .font(.headline)
             Spacer()
-            Button(action: { historyStore.clearHistory() }) {
+            Menu {
+                Button("Clear History (keep pinned)") {
+                    historyStore.clearHistory()
+                }
+                Button("Clear Everything") {
+                    showingClearConfirmation = true
+                }
+            } label: {
                 Image(systemName: "trash")
                     .foregroundColor(.secondary)
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
+            .frame(width: 20)
             .help("Clear History")
+            .alert("Clear All History?", isPresented: $showingClearConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Clear Everything", role: .destructive) {
+                    historyStore.clearAllHistory()
+                }
+            } message: {
+                Text("This will permanently delete all clipboard history, including pinned items. This cannot be undone.")
+            }
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
@@ -85,9 +108,36 @@ struct MenuBarView: View {
     }
 
     private var historyListView: some View {
-        ScrollView {
+        let favorites = filteredEntries.filter { $0.isFavorite }
+        let others = filteredEntries.filter { !$0.isFavorite }
+
+        return ScrollView {
             LazyVStack(spacing: 4) {
-                ForEach(filteredEntries) { entry in
+                if !favorites.isEmpty {
+                    HStack {
+                        Image(systemName: "pin.fill")
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                        Text("Pinned")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.top, 4)
+
+                    ForEach(favorites) { entry in
+                        ClipboardEntryRow(entry: entry)
+                            .environmentObject(historyStore)
+                    }
+
+                    if !others.isEmpty {
+                        Divider()
+                            .padding(.horizontal, 8)
+                    }
+                }
+
+                ForEach(others) { entry in
                     ClipboardEntryRow(entry: entry)
                         .environmentObject(historyStore)
                 }
@@ -110,9 +160,7 @@ struct MenuBarView: View {
             .buttonStyle(.plain)
             .help("Help & Shortcuts")
 
-            Button(action: {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            }) {
+            Button(action: { openSettings() }) {
                 Image(systemName: "gear")
             }
             .buttonStyle(.plain)
@@ -137,87 +185,93 @@ struct HelpView: View {
     @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Demoskop Clipboard")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                Spacer()
-                Button(action: { closeHelp() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            // Title with top padding to avoid menu bar clipping
+            Text("Demoskop Clipboard")
+                .font(.title2)
+                .fontWeight(.bold)
+                .padding(.top, 4)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Keyboard Shortcuts
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Keyboard Shortcuts")
+                            .font(.headline)
+
+                        shortcutRow("⇧⌥V", "Show clipboard history")
+                        shortcutRow("⌥⌘V", "Paste as rich text")
+                        shortcutRow("⇧⌥⌘V", "Paste as plain text")
+                    }
+
+                    Divider()
+
+                    // Markdown Conversion
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Markdown → Rich Text")
+                            .font(.headline)
+
+                        Text("Automatic conversion happens when you copy text containing Markdown:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("• **bold** → ").font(.caption) + Text("bold").font(.caption).bold()
+                            Text("• *italic* → ").font(.caption) + Text("italic").font(.caption).italic()
+                            Text("• # Heading → ").font(.caption) + Text("Heading").font(.caption).bold()
+                            Text("• [link](url) → clickable link").font(.caption)
+                            Text("• `code` → monospace text").font(.caption)
+                        }
+                        .padding(.leading, 8)
+
+                        Text("Just copy Markdown text normally. When you paste into Word, Mail, or Notes, it will be formatted automatically.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Divider()
+
+                    // Icons explanation
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("History Icons")
+                            .font(.headline)
+
+                        HStack(spacing: 16) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "text.badge.checkmark")
+                                    .foregroundColor(.blue)
+                                Text("= Rich text ready")
+                                    .font(.caption)
+                            }
+                            HStack(spacing: 4) {
+                                Image(systemName: "star.fill")
+                                    .foregroundColor(.yellow)
+                                Text("= Favorite (pinned to top)")
+                                    .font(.caption)
+                            }
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
+            }
+
+            Divider()
+
+            // Footer with close button at the bottom - always reachable
+            HStack {
+                Text("© 2026 Demoskop")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                Button(action: { closeHelp() }) {
+                    Text("Close")
+                        .frame(minWidth: 60)
+                }
                 .keyboardShortcut(.escape, modifiers: [])
             }
-
-            Divider()
-
-            // Keyboard Shortcuts
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Keyboard Shortcuts")
-                    .font(.headline)
-
-                shortcutRow("⇧⌥V", "Show clipboard history")
-                shortcutRow("⌥⌘V", "Paste as rich text")
-                shortcutRow("⇧⌥⌘V", "Paste as plain text")
-            }
-
-            Divider()
-
-            // Markdown Conversion
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Markdown → Rich Text")
-                    .font(.headline)
-
-                Text("Automatic conversion happens when you copy text containing Markdown:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("• **bold** → ").font(.caption) + Text("bold").font(.caption).bold()
-                    Text("• *italic* → ").font(.caption) + Text("italic").font(.caption).italic()
-                    Text("• # Heading → ").font(.caption) + Text("Heading").font(.caption).bold()
-                    Text("• [link](url) → clickable link").font(.caption)
-                    Text("• `code` → monospace text").font(.caption)
-                }
-                .padding(.leading, 8)
-
-                Text("Just copy Markdown text normally. When you paste into Word, Mail, or Notes, it will be formatted automatically.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Divider()
-
-            // Icons explanation
-            VStack(alignment: .leading, spacing: 8) {
-                Text("History Icons")
-                    .font(.headline)
-
-                HStack(spacing: 16) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "text.badge.checkmark")
-                            .foregroundColor(.blue)
-                        Text("= Rich text ready")
-                            .font(.caption)
-                    }
-                    HStack(spacing: 4) {
-                        Image(systemName: "star.fill")
-                            .foregroundColor(.yellow)
-                        Text("= Favorite")
-                            .font(.caption)
-                    }
-                }
-            }
-
-            Spacer()
-
-            Text("© 2026 Demoskop")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-                .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding()
         .frame(width: 320, height: 420)

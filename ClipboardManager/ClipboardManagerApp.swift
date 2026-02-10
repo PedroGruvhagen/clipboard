@@ -35,6 +35,8 @@ struct ClipboardManagerApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var showHistoryObserver: NSObjectProtocol?
+    private var openSettingsObserver: NSObjectProtocol?
+    private var preferencesWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Start clipboard monitoring
@@ -50,6 +52,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { _ in
             MenuBarState.shared.isPresented.toggle()
+        }
+
+        // Listen for open settings notification (robust approach for macOS 26+)
+        openSettingsObserver = NotificationCenter.default.addObserver(
+            forName: .openSettings,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.openPreferencesWindow()
         }
 
         // Check accessibility permission (required for paste simulation)
@@ -69,9 +80,60 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Stop monitoring
         ClipboardWatcher.shared.stopMonitoring()
 
-        // Remove observer
+        // Remove observers
         if let observer = showHistoryObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = openSettingsObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
+
+    /// Opens the preferences window using a direct NSWindow approach.
+    /// This bypasses SwiftUI's broken openSettings/showSettingsWindow: on macOS 26 Tahoe.
+    func openPreferencesWindow() {
+        // Check if our window already exists and bring it to front
+        if let window = preferencesWindow, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        // Also check for any existing SwiftUI Settings window (from Cmd+,)
+        for window in NSApp.windows where window.isVisible {
+            if window.title == "Settings" || window.title == "Preferences" {
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                return
+            }
+        }
+
+        // Create a new preferences window using NSHostingController
+        let view = PreferencesView()
+            .environmentObject(HistoryStore.shared)
+
+        let controller = NSHostingController(rootView: view)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 450, height: 300),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Demoskop Clipboard Settings"
+        window.contentViewController = controller
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+
+        NSApp.activate(ignoringOtherApps: true)
+
+        preferencesWindow = window
+    }
+}
+
+// MARK: - Notification Names
+
+extension Notification.Name {
+    static let openSettings = Notification.Name("openSettings")
 }

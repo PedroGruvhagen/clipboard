@@ -8,6 +8,7 @@ struct PreferencesView: View {
     @AppStorage("autoConvertMarkdown") private var autoConvertMarkdown = true
     @AppStorage("showNotifications") private var showNotifications = false
     @AppStorage("launchAtLogin") private var launchAtLogin = false
+    @AppStorage("retentionDays") private var retentionDays = 0
 
     var body: some View {
         TabView {
@@ -31,7 +32,7 @@ struct PreferencesView: View {
                     Label("About", systemImage: "info.circle")
                 }
         }
-        .frame(width: 450, height: 300)
+        .frame(width: 450, height: 380)
     }
 
     private var generalTab: some View {
@@ -52,8 +53,32 @@ struct PreferencesView: View {
                     Text("Maximum history items: \(maxHistoryItems)")
                 }
 
-                Button("Clear All History") {
+                Picker("Auto-delete after:", selection: $retentionDays) {
+                    Text("Never (keep forever)").tag(0)
+                    Text("1 day").tag(1)
+                    Text("3 days").tag(3)
+                    Text("7 days").tag(7)
+                    Text("14 days").tag(14)
+                    Text("30 days").tag(30)
+                    Text("90 days").tag(90)
+                }
+                .onChange(of: retentionDays) { _ in
+                    historyStore.purgeExpiredEntries()
+                }
+
+                Text("Pinned items are never auto-deleted.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section {
+                Button("Clear History (keep pinned)") {
                     historyStore.clearHistory()
+                }
+                .foregroundColor(.red)
+
+                Button("Clear Everything (including pinned)") {
+                    historyStore.clearAllHistory()
                 }
                 .foregroundColor(.red)
             }
