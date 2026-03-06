@@ -102,19 +102,20 @@ cp "$PROJECT_DIR/ClipboardManager/ClipboardManager.entitlements" "$BUILD_DIR/ent
 echo "Code signing app bundle..."
 SIGNING_IDENTITY="Developer ID Application: Pedro Gruvhagen (NDVYB433TK)"
 
-# Sign Sparkle framework first (if present)
+# Deep-sign Sparkle framework (all nested binaries must be signed individually)
 if [ -d "$FRAMEWORKS_DIR/Sparkle.framework" ]; then
-    codesign --force --options runtime \
-        --sign "$SIGNING_IDENTITY" \
-        --timestamp \
-        "$FRAMEWORKS_DIR/Sparkle.framework"
+    echo "Signing Sparkle framework components..."
+    find "$FRAMEWORKS_DIR/Sparkle.framework" -type f \( -name "*.xpc" -o -name "Autoupdate" -o -name "Updater" -o -name "Downloader" -o -name "Installer" \) -o -type d \( -name "*.xpc" -o -name "*.app" \) | sort -r | while read -r component; do
+        codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$component" 2>/dev/null || true
+    done
+    codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp --deep "$FRAMEWORKS_DIR/Sparkle.framework"
 fi
 
 # Sign the main app bundle
 codesign --force --options runtime \
     --entitlements "$BUILD_DIR/entitlements.plist" \
     --sign "$SIGNING_IDENTITY" \
-    --timestamp \
+    --timestamp --deep \
     "$APP_BUNDLE"
 
 echo "Verifying signature..."
