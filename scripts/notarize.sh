@@ -21,8 +21,8 @@ APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 ENTITLEMENTS="$BUILD_DIR/entitlements.plist"
 
 # Configuration - replace with your values or pass as arguments
-TEAM_ID="${1:-YOUR_TEAM_ID}"
-APPLE_ID="${2:-your@email.com}"
+TEAM_ID="${1:-NDVYB433TK}"
+APPLE_ID="${2:-apple.demoskop@demoskop.appleaccount.com}"
 KEYCHAIN_PROFILE="AC_PASSWORD"
 
 echo "=== DemoskopClipboard Notarization ==="
@@ -40,7 +40,7 @@ fi
 echo "Step 1: Code signing with Developer ID..."
 codesign --force --options runtime \
     --entitlements "$ENTITLEMENTS" \
-    --sign "Developer ID Application: $TEAM_ID" \
+    --sign "Developer ID Application: Pedro Gruvhagen ($TEAM_ID)" \
     --timestamp \
     "$APP_BUNDLE"
 

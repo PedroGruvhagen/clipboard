@@ -98,12 +98,33 @@ fi
 # Copy entitlements for signing reference
 cp "$PROJECT_DIR/ClipboardManager/ClipboardManager.entitlements" "$BUILD_DIR/entitlements.plist"
 
+# Code sign the app bundle
+echo "Code signing app bundle..."
+SIGNING_IDENTITY="Developer ID Application: Pedro Gruvhagen (NDVYB433TK)"
+
+# Sign Sparkle framework first (if present)
+if [ -d "$FRAMEWORKS_DIR/Sparkle.framework" ]; then
+    codesign --force --options runtime \
+        --sign "$SIGNING_IDENTITY" \
+        --timestamp \
+        "$FRAMEWORKS_DIR/Sparkle.framework"
+fi
+
+# Sign the main app bundle
+codesign --force --options runtime \
+    --entitlements "$BUILD_DIR/entitlements.plist" \
+    --sign "$SIGNING_IDENTITY" \
+    --timestamp \
+    "$APP_BUNDLE"
+
+echo "Verifying signature..."
+codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+
 echo ""
 echo "=== Build Complete ==="
 echo "App Bundle: $APP_BUNDLE"
 echo "Entitlements: $BUILD_DIR/entitlements.plist"
 echo ""
 echo "Next steps:"
-echo "1. Code sign: codesign --force --options runtime --entitlements $BUILD_DIR/entitlements.plist --sign 'Developer ID Application: YOUR_NAME (TEAM_ID)' '$APP_BUNDLE'"
-echo "2. Notarize: See scripts/notarize.sh"
-echo "3. Create DMG: See scripts/create-dmg.sh"
+echo "1. Notarize: See scripts/notarize.sh"
+echo "2. Create DMG: See scripts/create-dmg.sh"

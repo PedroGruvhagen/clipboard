@@ -224,7 +224,9 @@ final class MarkdownConverter {
 
     /// Converts all markdown tables in the text to HTML
     private func convertAllTables(_ markdown: String) -> String {
-        let lines = markdown.components(separatedBy: "\n")
+        let normalized = markdown.replacingOccurrences(of: "\r\n", with: "\n")
+                                 .replacingOccurrences(of: "\r", with: "\n")
+        let lines = normalized.components(separatedBy: "\n")
         var result: [String] = []
         var i = 0
 
@@ -261,14 +263,14 @@ final class MarkdownConverter {
 
     /// Checks if a line looks like a table row (contains pipes)
     private func isTableRow(_ line: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         // Must contain at least one pipe and have content
         return trimmed.contains("|") && trimmed.count > 1
     }
 
     /// Checks if a line is a table separator (|---|---|)
     private func isTableSeparator(_ line: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         // Must contain pipes and dashes, and mostly consist of |, -, :, and spaces
         guard trimmed.contains("|") && trimmed.contains("-") else { return false }
 
@@ -282,7 +284,7 @@ final class MarkdownConverter {
     private func parseAlignments(_ separator: String) -> [String] {
         let cells = parseCells(separator)
         return cells.map { cell -> String in
-            let trimmed = cell.trimmingCharacters(in: .whitespaces)
+            let trimmed = cell.trimmingCharacters(in: .whitespacesAndNewlines)
             let startsColon = trimmed.hasPrefix(":")
             let endsColon = trimmed.hasSuffix(":")
 
@@ -298,7 +300,7 @@ final class MarkdownConverter {
 
     /// Parses cells from a table row
     private func parseCells(_ row: String) -> [String] {
-        var trimmed = row.trimmingCharacters(in: .whitespaces)
+        var trimmed = row.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Remove leading and trailing pipes if present
         if trimmed.hasPrefix("|") {

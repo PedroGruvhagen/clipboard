@@ -100,15 +100,14 @@ hdiutil convert "$DMG_TEMP" \
 rm -f "$DMG_TEMP"
 rm -rf "$STAGING_DIR"
 
-# Sign the DMG (if Developer ID available)
-echo ""
-echo "Note: Sign the DMG with your Developer ID:"
-echo "  codesign --force --sign 'Developer ID Application: YOUR_NAME (TEAM_ID)' '$DMG_PATH'"
-echo ""
+# Sign the DMG
+echo "Signing DMG..."
+SIGNING_IDENTITY="Developer ID Application: Pedro Gruvhagen (NDVYB433TK)"
+codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$DMG_PATH"
 
-# Notarize the DMG
+echo ""
 echo "To notarize the DMG:"
-echo "  xcrun notarytool submit '$DMG_PATH' --apple-id 'your@email.com' --team-id 'TEAM_ID' --password '@keychain:AC_PASSWORD' --wait"
+echo "  xcrun notarytool submit '$DMG_PATH' --apple-id 'apple.demoskop@demoskop.appleaccount.com' --team-id 'NDVYB433TK' --password '@keychain:AC_PASSWORD' --wait"
 echo "  xcrun stapler staple '$DMG_PATH'"
 echo ""
 

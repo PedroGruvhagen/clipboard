@@ -1,3 +1,6 @@
+# Tasks
+.tasks/
+
 # Build
 .build/
 build/
