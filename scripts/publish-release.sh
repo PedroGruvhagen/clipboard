@@ -31,7 +31,7 @@ TEAM_ID="NDVYB433TK"
 APPLE_ID="apple.demoskop@demoskop.appleaccount.com"
 
 # GitHub release repo (public repo for hosting release artifacts)
-GITHUB_RELEASES_REPO="demoskop/demoskop-clipboard-releases"
+GITHUB_RELEASES_REPO="DemoskopAB/demoskop-clipboard-releases"
 
 echo "=== DemoskopClipboard Release v${VERSION} ==="
 echo ""
