@@ -219,7 +219,99 @@ final class MarkdownConverter {
     /// Down library uses cmark (not cmark-gfm) and doesn't support tables
     /// This method converts markdown tables to HTML before Down processes the rest
     private func preprocessMarkdownTables(_ markdown: String) -> String {
-        return convertAllTables(markdown)
+        let reconstructed = reconstructSingleLineTables(markdown)
+        return convertAllTables(reconstructed)
+    }
+
+    /// Reconstructs tables where newlines were stripped (all content on one line)
+    /// This happens when copying from rendered markdown viewers, web pages, or chat apps
+    private func reconstructSingleLineTables(_ text: String) -> String {
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+                             .replacingOccurrences(of: "\r", with: "\n")
+        let lines = normalized.components(separatedBy: "\n")
+        var result: [String] = []
+
+        let separatorPattern = #"\|\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|"#
+        guard let sepRegex = try? NSRegularExpression(pattern: separatorPattern) else {
+            return text
+        }
+
+        for line in lines {
+            let nsRange = NSRange(line.startIndex..., in: line)
+            guard let match = sepRegex.firstMatch(in: line, range: nsRange),
+                  let matchRange = Range(match.range, in: line) else {
+                result.append(line)
+                continue
+            }
+
+            let separator = String(line[matchRange])
+            let beforeSep = String(line[line.startIndex..<matchRange.lowerBound])
+            let afterSep = String(line[matchRange.upperBound...])
+
+            let hasPipesBefore = beforeSep.contains("|")
+            let hasPipesAfter = afterSep.trimmingCharacters(in: .whitespacesAndNewlines).contains("|")
+
+            guard hasPipesBefore || hasPipesAfter else {
+                result.append(line)
+                continue
+            }
+
+            var sepTrimmed = separator.trimmingCharacters(in: .whitespacesAndNewlines)
+            if sepTrimmed.hasPrefix("|") { sepTrimmed = String(sepTrimmed.dropFirst()) }
+            if sepTrimmed.hasSuffix("|") { sepTrimmed = String(sepTrimmed.dropLast()) }
+            let columnCount = sepTrimmed.components(separatedBy: "|").count
+            guard columnCount >= 2 else {
+                result.append(line)
+                continue
+            }
+
+            let pipesPerRow = columnCount + 1
+
+            if hasPipesBefore {
+                let pipeIndices = beforeSep.indices.filter { beforeSep[$0] == "|" }
+                if pipeIndices.count >= pipesPerRow {
+                    let headerStart = pipeIndices[pipeIndices.count - pipesPerRow]
+                    let textBefore = String(beforeSep[beforeSep.startIndex..<headerStart])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let headerRow = String(beforeSep[headerStart...])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !textBefore.isEmpty { result.append(textBefore) }
+                    result.append(headerRow)
+                } else {
+                    let trimmedBefore = beforeSep.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmedBefore.isEmpty { result.append(trimmedBefore) }
+                }
+            }
+
+            result.append(separator)
+
+            if hasPipesAfter {
+                let afterTrimmed = afterSep.trimmingCharacters(in: .whitespacesAndNewlines)
+                var pipeCount = 0
+                var rowStart = afterTrimmed.startIndex
+                var consumedEnd = afterTrimmed.startIndex
+                for i in afterTrimmed.indices {
+                    if afterTrimmed[i] == "|" {
+                        pipeCount += 1
+                        if pipeCount == pipesPerRow {
+                            let row = String(afterTrimmed[rowStart...i])
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !row.isEmpty { result.append(row) }
+                            pipeCount = 0
+                            consumedEnd = afterTrimmed.index(after: i)
+                            rowStart = consumedEnd
+                        }
+                    }
+                }
+                if consumedEnd < afterTrimmed.endIndex {
+                    let remaining = String(afterTrimmed[consumedEnd...])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !remaining.isEmpty { result.append(remaining) }
+                }
+            }
+        }
+
+        return result.joined(separator: "\n")
     }
 
     /// Converts all markdown tables in the text to HTML
